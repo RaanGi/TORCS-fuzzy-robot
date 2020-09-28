@@ -1,0 +1,51 @@
+#File: AccelBrake.fll
+Engine: AccelBrake2
+InputVariable: speedError
+    enabled:true
+    range: -400 400
+    lock-range: false
+    term: NB Trapezoid -400.000 -400.000 -150 -35
+    term: NS Trapezoid -120.000 -120.000 -90.000 0
+    term: Z Triangle -5.000 0.000 0.500
+    term: PS Trapezoid 0.000 3.000 5.000 5.000
+    term: PB Trapezoid 1.000 5.000 400.000 400.000
+InputVariable: slip
+    enabled:true
+    range: -1 1
+    lock-range: false
+    term: ABS_Big Trapezoid -1.000 -1.000 -0.800 -0.400
+    term: ABS_Small Triangle -0.800 -0.600 0.000
+    term: Zero Trapezoid -0.300 -0.150 0.150 0.300
+    term: TCL_Small Triangle 0.000 0.500 0.800
+    term: TCL_Big Trapezoid 0.400 0.800 1.000 1.000
+OutputVariable: accelbrake
+    enabled: true
+    range: -1.000 1.000
+    lock-range: true
+    aggregation: Maximum
+    defuzzifier: SmallestOfMaximum
+    default: nan
+    lock-previous: false
+    term: HB Trapezoid -1.000 -1.000 -0.750 -0.100
+    term: SB Triangle -0.375 -0.375 0.000
+    term: Zero Triangle -0.050 0.000 0.050
+    term: SA Triangle 0.000 0.300 0.300
+    term: HA Trapezoid 0.200 0.980 1.000 1.000
+RuleBlock: mandami
+    enabled: true
+    conjunction: Minimum
+    disjunction: Maximum
+    implication: Minimum
+    activation: General
+    rule: if speedError is NB and slip is Zero then accelbrake is HB
+    rule: if speedError is NS and slip is Zero then accelbrake is SB
+    rule: if speedError is Z and slip is Zero then accelbrake is Zero
+    rule: if speedError is PS and slip is Zero then accelbrake is SA
+    rule: if speedError is PB and slip is Zero then accelbrake is HA
+
+    rule: if speedError is NB and slip is ABS_Small then accelbrake is SB
+    rule: if speedError is PB and slip is TCL_Small then accelbrake is SA
+    rule: if speedError is NB and slip is ABS_Big then accelbrake is Zero
+    rule: if speedError is PB and slip is TCL_Big then accelbrake is Zero
+    rule: if speedError is NS and slip is ABS_Small then accelbrake is Zero
+    rule: if speedError is PS and slip is TCL_Small then accelbrake is Zero
