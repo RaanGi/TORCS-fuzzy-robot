@@ -1,6 +1,6 @@
 # TORCS-fuzzy-robot
 This is a [TORCS](http://torcs.sourceforge.net/) robot that make use of fuzzy logic thanks to [fuzzylite](https://github.com/fuzzylite/fuzzylite).
-This project only works for LINUX.
+This project only works on LINUX.
 
 ## Installation
 
