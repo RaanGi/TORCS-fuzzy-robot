@@ -4,7 +4,7 @@ This project only works on LINUX.
 
 ## Installation
 
-First of all, you need to download and install TORCS, and also download and build Fuzzylite source code.
+First of all, you need to download and install TORCS, and also download and build Fuzzylite source code. This project use fuzzylite version 6.0.
 
 Then, go to drivers folder.
 
@@ -19,7 +19,7 @@ At this point, fuzzylite source should has been built.
 
 Inside RanGi folder, paste fuzzylite folder. This contains fuzzylite source and the release folder.
 
-Now is time to make an install our robot. To do this, there's a bash file that will make our live easier.
+Now is time to make and install our robot. To do this, there's a bash file that will make our life easier.
 
 ```bash
 cd RanGi
