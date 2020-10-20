@@ -281,7 +281,7 @@ float Driver::getAllowedSpeed(tTrackSeg *segment)
     
     allowedSpeed = MIN(400.0f, sqrt((mu*G*r)/(1.0f - MIN(1.0f, r*CA*mu/mass))));
     
-	return (overtakeMove && letPassOpp) ? allowedSpeed * 0.85f : allowedSpeed;
+	return overtakeMove ? allowedSpeed * 0.85f : allowedSpeed;
 }
 
 // Compute the length to the end of the segment.
