@@ -6,8 +6,8 @@ InputVariable: speed
     lock-range: false
     term: VeryLow Trapezoid 0.000 0.000 40.000 60.000
     term: Low Trapezoid 40.000 60.000 90.000 110.000
-    term: Medium Trapezoid 90.000 110.000 150.000 200.000
-    term: High Trapezoid 150.000 200.000 400.000 400.000
+    term: Medium Trapezoid 90.000 110.000 140.000 180.000
+    term: High Trapezoid 140.000 180.000 400.000 400.000
 InputVariable: carToLimit
     enabled: true
     range: 0 2

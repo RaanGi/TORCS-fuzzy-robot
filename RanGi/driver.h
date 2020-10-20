@@ -90,6 +90,7 @@ class Driver
 
 		Opponent* checkSColl(int sign);
 		Opponent* checkOvertake();
+		int checkLetPass();
 
         float getCarAngle();    // Return car angle based on track angle
 
@@ -127,6 +128,7 @@ class Driver
 		int nextTurnId;
 		int prevTurnType;
 		int overtakeMove;
+		int letPassOpp;
 
 		float lastFuelChecked;	// Car fuel the last time pitstop was checked
 		int lastDamageChecked;			// Car damage the last time pitstop was checked

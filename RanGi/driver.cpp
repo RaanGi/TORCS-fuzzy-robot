@@ -83,10 +83,12 @@ void Driver::newRace(tCarElt* car, tSituation *s)
 	CARMASS = GfParmGetNum(car->_carHandle, SECT_CAR, PRM_MASS, NULL, 1000.0f);
 	myoffset = 0.0f;	// BORRAR
 
+	// Init variables.
 	oldOffset = 0.0f;
 	nextTurnId = car->_trkPos.seg->id;
 	prevTurnType = TR_STR;
 	overtakeMove = 0;
+	letPassOpp = 0;
 
 	lastFuelChecked = car->_fuel;
 	lastDamageChecked = car->_dammage;
@@ -133,6 +135,7 @@ void Driver::drive(tSituation *s)
 		car->_brakeCmd = 0.0f;	// No brakes.
 		car->_clutchCmd = 0.0f;	// Full clutch (gearbox connected with engine).
 	} else {
+		letPassOpp = checkLetPass();
 		car->_steerCmd = filterSColl(getSteer());
 		car->_gearCmd = getGear();
 		getAccelBrake(&(car->_accelCmd), &(car->_brakeCmd));
@@ -278,7 +281,7 @@ float Driver::getAllowedSpeed(tTrackSeg *segment)
     
     allowedSpeed = MIN(400.0f, sqrt((mu*G*r)/(1.0f - MIN(1.0f, r*CA*mu/mass))));
     
-	return !overtakeMove ? allowedSpeed : allowedSpeed * 0.85f;
+	return (overtakeMove && letPassOpp) ? allowedSpeed * 0.85f : allowedSpeed;
 }
 
 // Compute the length to the end of the segment.
@@ -300,7 +303,7 @@ void Driver::getAccelBrake(float *accel, float *brake)
     float lookaheaddist = getDistToSegEnd();
 	float allowedSpeed, maxWheelSpin, wheelSlip;
 	
-	maxlookaheaddist = overtakeMove ? maxlookaheaddist * 0.9f : maxlookaheaddist;
+	maxlookaheaddist = overtakeMove ? maxlookaheaddist * 0.875f : maxlookaheaddist;
     while (lookaheaddist < maxlookaheaddist) {
         lookaheaddist += segptr->length;
         segptr = segptr->next;
@@ -349,7 +352,7 @@ void Driver::getAccelBrake(float *accel, float *brake)
     *brake = filterBColl(filterBPit(fc->getBrake()));
 	if(*brake == 0.0f) 
 	{
-		*accel = filterTrk(fc->getAccel());
+		*accel = (!letPassOpp ? filterTrk(fc->getAccel()) : filterTrk(fc->getAccel()) * 0.5f);
 	}
 	else
 	{
@@ -439,6 +442,18 @@ float Driver::getOffset(float lookahead)
 		Opponent* oppSide[] = {checkSColl(1), checkSColl(-1)};
 		float oppWidth, oppToMiddle, oppOffset;
 		int sign;
+
+		if(letPassOpp)
+		{
+			if(nextTurnSeg->type == TR_RGT)
+			{
+				posMaxOffset = negMaxOffset * 0.75;
+			}
+			else
+			{
+				negMaxOffset = posMaxOffset * 0.75f;
+			}
+		}
 
 		for(int i = 0; i < 2; i++)
 		{
@@ -1033,6 +1048,18 @@ Opponent* Driver::checkOvertake()
         }
     }
 	return opp;
+}
+
+int Driver::checkLetPass()
+{
+	int i;
+    Opponent *opp = NULL;
+    for (i = 0; i < opponents->getNOpponents(); i++) {
+        if (opponent[i].getState() & OPP_LETPASS) {
+			return 1;
+        }
+    }
+	return 0;
 }
 
 float Driver::filterTCL(float accel)
