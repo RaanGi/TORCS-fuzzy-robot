@@ -16,7 +16,7 @@
 ROBOT       = RanGi
 MODULE      = ${ROBOT}.so
 MODULEDIR   = drivers/${ROBOT}
-SOURCES     = ${ROBOT}.cpp driver.cpp fuzzycontrol.cpp cardata.cpp opponent.cpp spline.cpp pit.cpp strategy.cpp
+SOURCES     = ${ROBOT}.cpp driver.cpp fuzzycontrol.cpp cardata.cpp opponent.cpp spline.cpp pit.cpp strategy.cpp learn.cpp
 
 SHIPDIR     = drivers/${ROBOT}
 SHIP        = ${ROBOT}.xml logo.rgb

@@ -22,6 +22,7 @@
 #include "opponent.h"
 #include "strategy.h"
 #include "pit.h"
+#include "learn.h"
 
 #define RANGI_SECT_PRIV "RanGi private"
 #define RANGI_ATT_MUFACTOR "mufactor"
@@ -62,7 +63,8 @@ class Driver
 
 		tCarElt *getCarPtr() { return car; }
 		tTrack *getTrackPtr() { return track; }
-		float getSpeed();
+		float getSpeed() { return car->_speed_x; }
+		
     private:
         // Utility functions.
 		bool isStuck();
@@ -100,6 +102,8 @@ class Driver
 
         void computeRadius(float *radius);
 		void computeStraigth();
+		int isAlone();
+		tTrackSeg* getLookaheadSeg(float lookahead);
 
 
         // Per robot global data.
@@ -123,8 +127,9 @@ class Driver
 
         float currentspeedsqr;	// Square of the current speed_x.
 		float clutchtime;		// Clutch timer.
-		float oldlookahead;		// Lookahead for steering in the previous step.
+		float oldlookahead;		// Steering lookahead in the previous step.
 		float oldOffset;
+		float speedRedFactor;	// Reduction factor when turning alongside an opponent
 		int nextTurnId;
 		int prevTurnType;
 		int overtakeMove;
@@ -134,6 +139,8 @@ class Driver
 		int lastDamageChecked;			// Car damage the last time pitstop was checked
 
         float *radius;
+		RadiusLearn *learn;
+		int alone;
 		
 		struct straight straightInfo;
 
@@ -147,6 +154,7 @@ class Driver
 		float (Driver::*GET_DRIVEN_WHEEL_SPEED)();
 		float OVERTAKE_OFFSET_INC;		// [m/timestep]
 		float MU_FACTOR;				// [-]
+		float MAX_ABS_OFFSET;				// [m]
 
 		// Class constants.
 		static const float MAX_UNSTUCK_ANGLE;
@@ -162,7 +170,8 @@ class Driver
 		static const float ABS_MINSPEED;
 		static const float TCL_SLIP;
 		static const float LOOKAHEAD_CONST;
-		static const float LOOKAHEAD_FACTOR;
+		static const float LOOKAHEAD_ACCEL_BRAKE_FACTOR;
+		static const float LOOKAHEAD_STEER_FACTOR;
 		static const float WIDTHDIV;
 		static const float SIDECOLL_MARGIN;
 		static const float BORDER_OVERTAKE_MARGIN;

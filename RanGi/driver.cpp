@@ -14,7 +14,8 @@ const float Driver::ABS_MINSPEED = 3.0f;					// [m/s] Below this speed the ABS i
 const float Driver::TCL_SLIP = 2.0f;						// [m/s] range [0..10]
 const float Driver::TCL_RANGE = 10.0f;						// [m/s] range [0..10]
 const float Driver::LOOKAHEAD_CONST = 17.0f;				// [m]
-const float Driver::LOOKAHEAD_FACTOR = 0.33f;				// [-]
+const float Driver::LOOKAHEAD_ACCEL_BRAKE_FACTOR = 0.02f;	// [-]
+const float Driver::LOOKAHEAD_STEER_FACTOR = 0.005f;		// [-]
 const float Driver::WIDTHDIV = 3.0f;						// [-] Defines the percentage of the track to use (2/WIDTHDIV).
 const float Driver::SIDECOLL_MARGIN = 1.5f;					// [m] Distance between car centers to avoid side collisions.
 const float Driver::BORDER_OVERTAKE_MARGIN = 0.5f;			// [m]
@@ -44,10 +45,10 @@ Driver::Driver(int index)
 
 Driver::~Driver()
 {
-	delete [] radius;
 	delete opponents;
 	delete pit;
 	delete strategy;
+	delete learn;
 	if (cardata != NULL) {
             delete cardata;
             cardata = NULL;
@@ -69,7 +70,7 @@ void Driver::initTrack(tTrack* t, void *carHandle, void **carParmHandle, tSituat
 	strategy->setFuelAtRaceStart(t, carParmHandle, s, INDEX);
 
 	// Load and set parameters.
-	MU_FACTOR = GfParmGetNum(*carParmHandle, RANGI_SECT_PRIV, RANGI_ATT_MUFACTOR, (char*)NULL, 2.0f);
+	MU_FACTOR = GfParmGetNum(*carParmHandle, RANGI_SECT_PRIV, RANGI_ATT_MUFACTOR, (char*)NULL, 1.5f);
 }
 
 // Start a new race.
@@ -78,7 +79,7 @@ void Driver::newRace(tCarElt* car, tSituation *s)
     float deltaTime = (float) RCM_MAX_DT_ROBOTS;
 	MAX_UNSTUCK_COUNT = int(UNSTUCK_TIME_LIMIT/deltaTime);
 	OVERTAKE_OFFSET_INC = OVERTAKE_OFFSET_SPEED*deltaTime;
-	stuck = 0;
+	MAX_ABS_OFFSET = (car->_trkPos.seg->width / 2.75f);
 	this->car = car;
 	CARMASS = GfParmGetNum(car->_carHandle, SECT_CAR, PRM_MASS, NULL, 1000.0f);
 	myoffset = 0.0f;	// BORRAR
@@ -89,6 +90,9 @@ void Driver::newRace(tCarElt* car, tSituation *s)
 	prevTurnType = TR_STR;
 	overtakeMove = 0;
 	letPassOpp = 0;
+	stuck = 0;
+	alone = 1;
+	speedRedFactor = 1.0f;
 
 	lastFuelChecked = car->_fuel;
 	lastDamageChecked = car->_dammage;
@@ -111,9 +115,14 @@ void Driver::newRace(tCarElt* car, tSituation *s)
 	opponents = new Opponents(s, this, cardata);
 	opponent = opponents->getOpponentPtr();
 
+	learn = new RadiusLearn(track, s, INDEX);
+
     // Initialize radius of segments.
-	radius = new float[track->nseg];
-	computeRadius(radius);
+	radius = learn->getRadiusArray();
+	if(!(learn->learned()))
+	{
+		computeRadius(radius);
+	}
 
 	// Create the pit object
 	pit = new Pit(s, this);
@@ -281,7 +290,7 @@ float Driver::getAllowedSpeed(tTrackSeg *segment)
     
     allowedSpeed = MIN(400.0f, sqrt((mu*G*r)/(1.0f - MIN(1.0f, r*CA*mu/mass))));
     
-	return overtakeMove ? allowedSpeed * 0.85f : allowedSpeed;
+	return allowedSpeed * speedRedFactor;
 }
 
 // Compute the length to the end of the segment.
@@ -299,15 +308,11 @@ void Driver::getAccelBrake(float *accel, float *brake)
     double cSpeed, speedError;
     tTrackSeg *segptr = car->_trkPos.seg;
     float mu = segptr->surface->kFriction;
-    float maxlookaheaddist = LOOKAHEAD_CONST + currentspeedsqr * 0.02f;
-    float lookaheaddist = getDistToSegEnd();
+    float lookahead = LOOKAHEAD_CONST + currentspeedsqr * LOOKAHEAD_ACCEL_BRAKE_FACTOR;
 	float allowedSpeed, maxWheelSpin, wheelSlip;
 	
-	maxlookaheaddist = overtakeMove ? maxlookaheaddist * 0.875f : maxlookaheaddist;
-    while (lookaheaddist < maxlookaheaddist) {
-        lookaheaddist += segptr->length;
-        segptr = segptr->next;
-    }
+	lookahead = overtakeMove ? lookahead * 0.875f : lookahead;
+    segptr = getLookaheadSeg(lookahead);
 	int segCount = 0;
 	tTrackSeg *segArray[] = {segptr, car->_trkPos.seg->next->next};
 	float weights[] = {0.9f, 0.1f};
@@ -352,7 +357,7 @@ void Driver::getAccelBrake(float *accel, float *brake)
     *brake = filterBColl(filterBPit(fc->getBrake()));
 	if(*brake == 0.0f) 
 	{
-		*accel = (!letPassOpp ? filterTrk(fc->getAccel()) : filterTrk(fc->getAccel()) * 0.5f);
+		*accel = (!letPassOpp ? filterTrk(fc->getAccel()) : filterTrk(fc->getAccel()) * 0.3f);
 	}
 	else
 	{
@@ -397,21 +402,16 @@ float Driver::getSteer()
 
 float Driver::getOffset(float lookahead)
 {
-	tTrackSeg *segptr = car->_trkPos.seg;
+	tTrackSeg *segptr;
 	tTrackSeg *nextTurnSeg = car->_trkPos.seg;
-	float posMaxOffset = (car->_trkPos.seg->width / 2.75f);
-	float negMaxOffset = -posMaxOffset;
+	float posMaxOffset = MAX_ABS_OFFSET;
+	float negMaxOffset = -MAX_ABS_OFFSET;
 	float distToTurn = getDistToSegEnd();
 	float currentSpeed = getSpeed() * 3.6f;
 	float increment = 0.15f + currentSpeed / 3000.0f;
 	
 	computeStraigth();
-	int length = getDistToSegEnd();
-	while(length < lookahead)
-	{
-		segptr = segptr->next;
-		length += segptr->length;
-	}
+	segptr = getLookaheadSeg(lookahead);
 
 	{
 		tTrackSeg *aux = car->_trkPos.seg;
@@ -445,14 +445,26 @@ float Driver::getOffset(float lookahead)
 
 		if(letPassOpp)
 		{
-			if(nextTurnSeg->type == TR_RGT)
+			if(segptr->type == TR_STR)
 			{
-				posMaxOffset = negMaxOffset * 0.75;
+				if(nextTurnSeg->type == TR_RGT)
+				{
+					posMaxOffset = negMaxOffset * 0.75;
+				}
+				else
+				{
+					negMaxOffset = posMaxOffset * 0.75f;
+				}
+			}
+			else if(segptr->type == TR_RGT)
+			{
+				negMaxOffset = posMaxOffset * 0.5f;
 			}
 			else
 			{
-				negMaxOffset = posMaxOffset * 0.75f;
+				posMaxOffset = negMaxOffset * 0.5;
 			}
+			
 		}
 
 		for(int i = 0; i < 2; i++)
@@ -484,13 +496,14 @@ float Driver::getOffset(float lookahead)
 				sign = (oppToMiddle - car->_trkPos.toMiddle) > 0.0f ? 1 : -1;
 				oppOffset = oppToMiddle - oppWidth * sign;
 				//std::cout << "WIDTH: " << mycardata->getWidthOnTrack() << "\n";
+				// Get the slipstream
 				if(opp->getDistance() > 2.5f && !overtakeMove)
 				{
 					if(opp->getCarPtr()->_trkPos.seg->id < straightInfo.endSegId &&
 					segptr->type == TR_STR && car->_trkPos.seg->type == TR_STR)
 					{
-						posMaxOffset = MAX(MIN(oppToMiddle, posMaxOffset), negMaxOffset);
-						negMaxOffset = MIN(MAX(oppToMiddle, negMaxOffset), posMaxOffset);
+						posMaxOffset = MAX(MIN(oppToMiddle, posMaxOffset), negMaxOffset) + 0.01f;
+						negMaxOffset = MIN(MAX(oppToMiddle, negMaxOffset), posMaxOffset) - 0.01f;
 					}
 				}
 				else
@@ -516,8 +529,8 @@ float Driver::getOffset(float lookahead)
 					}
 					else if(car->_trkPos.seg->type == TR_STR)
 					{
-						if(sign == -1) negMaxOffset = MAX(oppOffset, negMaxOffset);
-						else posMaxOffset = MIN(oppOffset, posMaxOffset);	
+						if(nextTurnSeg->type == TR_RGT) negMaxOffset = MAX((oppOffset + posMaxOffset) / 2.0f, negMaxOffset);
+						else posMaxOffset = MIN((oppOffset + negMaxOffset) / 2.0f, posMaxOffset);	
 					}
 					else
 					{
@@ -531,6 +544,8 @@ float Driver::getOffset(float lookahead)
 		{
 			overtakeMove = 0;
 		}
+		if(overtakeMove)	speedRedFactor = 1.0f - MIN(MIN(fabs(posMaxOffset - car->_trkPos.toMiddle), fabs(negMaxOffset - car->_trkPos.toMiddle)), 0.2f);
+		else 	speedRedFactor = MAX((posMaxOffset + fabs(negMaxOffset)) / (MAX_ABS_OFFSET * 2.0f), 0.8f);
 	}
 
 	tTrackSeg *segArray[] = {segptr, segptr->prev->prev};
@@ -659,7 +674,7 @@ float Driver::getClutch()
 v2d Driver::getTargetPoint()
 {
 	tTrackSeg *seg = car->_trkPos.seg;
-	float lookahead = LOOKAHEAD_CONST * 1.2f + currentspeedsqr * 0.005f;
+	float lookahead;
 	float length = getDistToSegEnd();
 	float offset;
 
@@ -667,27 +682,16 @@ v2d Driver::getTargetPoint()
 	{
 		// To stop in the pit we need special lookahead values.
 		if (currentspeedsqr > pit->getSpeedlimitSqr()) {
-			lookahead = PIT_LOOKAHEAD + car->_speed_x*LOOKAHEAD_FACTOR;
+			lookahead = PIT_LOOKAHEAD + car->_speed_x*LOOKAHEAD_STEER_FACTOR;
 		} else {
 			lookahead = PIT_LOOKAHEAD;
 		}
 		offset = updateOffset(0.0f, lookahead);
-	} 
-	else if(overtakeMove)
-	{
-		// Reduced lookahead for overtaking.
-		lookahead = LOOKAHEAD_CONST + car->_speed_x*0.1f;
-		// Prevent "snap back" of lookahead on harsh braking.
-		float cmplookahead = oldlookahead - car->_speed_x*RCM_MAX_DT_ROBOTS;
-		if (lookahead < cmplookahead) {
-			lookahead = cmplookahead;
-		}
-		offset = updateOffset(0.2f, lookahead);
-		//std::cout << "SP_LH: " << lookahead << "\t";
 	}
 	else 
 	{
 		// Usual lookahead.
+		lookahead = LOOKAHEAD_CONST + currentspeedsqr * LOOKAHEAD_STEER_FACTOR;
 		// Prevent "snap back" of lookahead on harsh braking.
 		float cmplookahead = oldlookahead - car->_speed_x*RCM_MAX_DT_ROBOTS;
 		if (lookahead < cmplookahead) {
@@ -763,6 +767,32 @@ void Driver::update(tSituation *s)
 		lastDamageChecked = car->_dammage;
 	}
 	pit->update();
+	alone = isAlone();
+	learn->update(s, track, car, getLookaheadSeg(LOOKAHEAD_CONST + currentspeedsqr * LOOKAHEAD_STEER_FACTOR), alone, pit->getInPit());
+}
+
+int Driver::isAlone()
+{
+	int i;
+	for (i = 0; i < opponents->getNOpponents(); i++) {
+		if ((opponent[i].getState() & (OPP_COLL | OPP_LETPASS | OPP_SIDE)) && overtakeMove) {
+			return 0;	// Not alone.
+		}
+	}
+	return 1;	// Alone.
+}
+
+// Returns the segment that is at a given distance (lookahead) from the car segment.
+tTrackSeg* Driver::getLookaheadSeg(float lookahead)
+{
+	float length = getDistToSegEnd();
+	tTrackSeg *seg = car->_trkPos.seg;
+	while (length < lookahead)
+	{
+		seg = seg->next;
+		length += seg->length;
+	}
+	return seg;
 }
 
 // Check if I'm stuck.
@@ -1123,18 +1153,6 @@ float Driver::filterTrk(float accel)
 	}
 
 	return accel;
-}
-
-float Driver::getSpeed()
-{
-    float trackangle = RtTrackSideTgAngleL(&(car->_trkPos));
-    v2d speed, dir;
-
-    speed.x = car->_speed_X;
-    speed.y = car->_speed_Y;
-    dir.x = cos(trackangle);
-    dir.y = sin(trackangle);
-    return speed * dir;
 }
 
 float Driver::getCarAngle()
