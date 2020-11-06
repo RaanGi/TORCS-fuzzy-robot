@@ -34,17 +34,29 @@ class RadiusLearn {
         bool fileExist;
         bool trackLearned;
         bool validLap;
+        double *sectTime;
 
         typedef struct radiusSetup
         {
             float *radius;
-            float fuel;
             double time;
         };
 
         radiusSetup actualSetup;
         radiusSetup bestSetup;
         radiusSetup bestSetupBigFuel; 
+
+        typedef struct SectorSetup
+        {
+            float *radius;
+            float fuel;
+            int nseg;
+            double time;
+        };
+
+        SectorSetup *bestSectorSetup;
+        SectorSetup *bestSectorSetupBigFuel;
+        
         
 
         // Class constants
@@ -52,10 +64,11 @@ class RadiusLearn {
         static const float MAX_SEG_MOD;
         static const int MIN_GOOD_LAPS;
         static const int MAX_CONSECUTIVE_DECREASE;
+        static const int MAX_SECTORS;
 
         void writeRadius();
         bool readRadius(tTrack* track, float *radius, int driverindex);
         FILE* getRadiusFile(tTrack* track, int driverindex);
-        void updateBestSetup(tCarElt *car);
+        void updateBestSectorSetup(tCarElt *car, int sector);
         void processTraining();
 };

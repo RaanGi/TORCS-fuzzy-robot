@@ -38,6 +38,7 @@ const float RadiusLearn::MAX_SEG_BIG_MOD = 6;
 const float RadiusLearn::MAX_SEG_MOD = 10;
 const int RadiusLearn::MIN_GOOD_LAPS = 2;
 const int RadiusLearn::MAX_CONSECUTIVE_DECREASE = 2;
+const int RadiusLearn::MAX_SECTORS = 6;
 
 
 RadiusLearn::RadiusLearn(tTrack* t, tSituation *s, int driverindex)
@@ -45,27 +46,45 @@ RadiusLearn::RadiusLearn(tTrack* t, tSituation *s, int driverindex)
 	radius = new float[t->nseg];
     updateLap = new int[t->nseg];
 	consecutiveDecrease = new int[t->nseg];
-	bestSetup.fuel = 0.0f;
 	bestSetup.radius = new float[t->nseg];
-	bestSetup.time = FLT_MAX;
-	bestSetupBigFuel.fuel = 0.0f;
+	bestSetup.time = 0.0;
 	bestSetupBigFuel.radius = new float[t->nseg];
-	bestSetupBigFuel.time = FLT_MAX;
-	actualSetup.fuel = 0.0f;
+	bestSetupBigFuel.time = 0.0;
 	actualSetup.radius = new float[t->nseg];
 	actualSetup.time = FLT_MAX;
+	sectTime = new double[MAX_SECTORS];
+	bestSectorSetup = new SectorSetup[MAX_SECTORS];
+	bestSectorSetupBigFuel = new SectorSetup[MAX_SECTORS];
     nseg = t->nseg;
 	laps = 0;
-	goodLaps = 0;
+	goodLaps = -1;
 	increasedRadiusLap = -1;
 	decreasedRadiusLap = -1;
 	trackLearned = false;
 	validLap = true;
 
+	int nSegSector = int(nseg / MAX_SECTORS);
+	for(int i = 0; i < MAX_SECTORS; i++)
+	{
+		bestSectorSetup[i].nseg = i < (MAX_SECTORS - 1) ? nSegSector : nseg - nSegSector * i;
+		bestSectorSetup[i].radius = &(bestSetup.radius[nSegSector * i]);
+		bestSectorSetup[i].time = FLT_MAX;
+		bestSectorSetup[i].fuel = 0.0f;
+		
+		bestSectorSetupBigFuel[i].nseg = i < (MAX_SECTORS - 1) ? nSegSector : nseg - nSegSector * i;
+		bestSectorSetupBigFuel[i].radius = &(bestSetupBigFuel.radius[nSegSector * i]);
+		bestSectorSetupBigFuel[i].time = FLT_MAX;
+		bestSectorSetupBigFuel[i].fuel = 0.0f;
+	}
+
+
 	fileExist = readRadius(t, radius, driverindex);
 
-    memset(updateLap, -1, sizeof(int) * nseg);
-	memset(consecutiveDecrease, 0, sizeof(int) * nseg);
+	memset(bestSetup.radius, 0.0f, sizeof(bestSetup.radius[0]) * nseg);
+	memset(bestSetupBigFuel.radius, 0.0f, sizeof(bestSetupBigFuel.radius[0]) * nseg);
+    memset(updateLap, -1, sizeof(updateLap[0]) * nseg);
+	memset(consecutiveDecrease, 0, sizeof(consecutiveDecrease[0]) * nseg);
+	memset(sectTime, 0.0, sizeof(sectTime[0]) * MAX_SECTORS);
 }
 
 
@@ -80,6 +99,9 @@ RadiusLearn::~RadiusLearn()
 	delete [] actualSetup.radius;
 	delete [] bestSetup.radius;
 	delete [] bestSetupBigFuel.radius;
+	delete [] sectTime;
+	delete [] bestSectorSetup;
+	delete [] bestSectorSetupBigFuel;
 }
 
 
@@ -87,9 +109,25 @@ void RadiusLearn::update(tSituation *s, tTrack *t, tCarElt *car, tTrackSeg *look
 {
 	if(((alone && !trackLearned) || (s->_raceType == RM_TYPE_PRACTICE && trackLearned)) && !inPit)
     {
+		for(int i = 0; i < MAX_SECTORS; i++)
+		{
+			int segId = bestSectorSetup[0].nseg;
+			for(int j = 0; j < i; j++)
+			{
+				segId += bestSectorSetup[j].nseg;
+			}
+			if(car->_trkPos.seg->id == fmod(segId, nseg) && laps > 1)
+			{
+				sectTime[i] = car->_curLapTime;
+				for(int j = 0; j < i; j++)
+				{
+					sectTime[i] -= sectTime[j];
+				}
+				updateBestSectorSetup(car, i);
+			}
+		}
 		if(car->_laps > laps) 
 		{
-			updateBestSetup(car);
 			if(decreasedRadiusLap != laps)	goodLaps++;
 			else	goodLaps = 0;
 			laps = car->_laps;
@@ -97,18 +135,18 @@ void RadiusLearn::update(tSituation *s, tTrack *t, tCarElt *car, tTrackSeg *look
 			{
 				if(!trackLearned)	trackLearned = true;
 				for(int i = 0; i < nseg; i++)
-				{
-					std::cout << "LAP: " << laps << "\tRadius increased: " << radius[i] << " --> "; 
+				{ 
 					if(radius[i] < FLT_MAX)	radius[i]++;
-					std::cout << radius[i] << "\n";
 				}
+				std::cout << "\nRADIUS INCREASED\n";
 				increasedRadiusLap = laps;
 			}
 			validLap = true;
+			memset(sectTime, 0.0, sizeof(sectTime[0]) * 3);
 		}
 
         tTrackSeg* seg = car->_trkPos.seg;
-        float widthDiv = 5.5f;
+        float widthDiv = 5.0f;
 
         if(radius[seg->id] < 1000)
         {
@@ -155,29 +193,29 @@ void RadiusLearn::update(tSituation *s, tTrack *t, tCarElt *car, tTrackSeg *look
     }
 }
 
-void RadiusLearn::updateBestSetup(tCarElt *car)
+void RadiusLearn::updateBestSectorSetup(tCarElt *car, int sector)
 {
 	if(validLap)
 	{
-		if(car->_lastLapTime < bestSetup.time && laps > 1)
+		if(sectTime[sector] < bestSectorSetup[sector].time && sectTime[sector] > 0.0)
 		{
-			for(int i = 0; i < nseg; i++)
+			for(int i = 0; i < bestSectorSetup[sector].nseg; i++)
 			{
-				bestSetup.radius[i] = radius[i];
+				bestSectorSetup[sector].radius[i] = radius[i + bestSectorSetup[0].nseg * sector];
 			}
-			bestSetup.time = car->_lastLapTime;
-			bestSetup.fuel = car->_fuel;
-			std::cout << "\nUPDATE SETUP LAP: " <<  car->_laps << "\n\n";
+			bestSectorSetup[sector].time = sectTime[sector];
+			bestSectorSetup[sector].fuel = car->_fuel;
+			std::cout << "\nUPDATE SECTOR " << (sector + 1) << " SETUP LAP: " <<  car->_laps << "\n";
 		}
-		if(car->_lastLapTime < bestSetupBigFuel.time && laps > 1 && car->_fuel / car->_tank > 0.75f)
+		if(sectTime[sector] < bestSectorSetupBigFuel[sector].time && sectTime[sector] > 0.0 && car->_fuel / car->_tank > 0.75f)
 		{
-			for(int i = 0; i < nseg; i++)
+			for(int i = 0; i < bestSectorSetupBigFuel[sector].nseg; i++)
 			{
-				bestSetupBigFuel.radius[i] = radius[i];
+				bestSectorSetupBigFuel[sector].radius[i] = radius[i + bestSectorSetupBigFuel[0].nseg * sector];
 			}
-			bestSetupBigFuel.time = car->_lastLapTime;
-			bestSetupBigFuel.fuel = car->_fuel;
-			std::cout << "UPDATE SETUP BIG FUEL LAP: " <<  car->_laps << "\n\n";
+			bestSectorSetupBigFuel[sector].time = sectTime[sector];
+			bestSectorSetupBigFuel[sector].fuel = car->_fuel;
+			std::cout << "UPDATE SECTOR " << (sector + 1) << " BIG FUEL SETUP LAP: " <<  car->_laps << "\n";
 		}
 	}
 }
@@ -297,7 +335,20 @@ FILE* RadiusLearn::getRadiusFile(tTrack* track, int driverindex)
 void RadiusLearn::processTraining()
 {
 	std::cout << "\n\nTRACK LEARNED: " << (trackLearned ? "TRUE\n\n" : "FALSE\n\n");
+
+	for(int i = 0; i < nseg; i++)
+	{
+		if(bestSetup.radius[i] == 0.0f)	bestSetup.radius[i] = radius[i];
+		if(bestSetupBigFuel.radius[i] == 0.0f)	bestSetupBigFuel.radius[i] = radius[i];
+	}
+
+	for(int i = 0; i < MAX_SECTORS; i++)
+	{
+		bestSetup.time += bestSectorSetup[i].time;
+		bestSetupBigFuel.time += bestSectorSetupBigFuel[i].time;
+	}
 	bestSetup.time = bestSetup.time * 0.8 + bestSetupBigFuel.time * 0.2;
+
 	if(bestSetup.time < actualSetup.time || !fileExist)
 	{
 		for(int i = 0; i < nseg; i++)
