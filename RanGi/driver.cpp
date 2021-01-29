@@ -309,7 +309,7 @@ void Driver::getAccelBrake(float *accel, float *brake)
     tTrackSeg *segptr = car->_trkPos.seg;
     float mu = segptr->surface->kFriction;
     float lookahead = LOOKAHEAD_CONST + currentspeedsqr * LOOKAHEAD_ACCEL_BRAKE_FACTOR;
-	float allowedSpeed, maxWheelSpin, wheelSlip;
+	float allowedSpeed, wheelSpin, wheelSlip;
 	
 	lookahead = overtakeMove ? lookahead * 0.875f : lookahead;
     segptr = getLookaheadSeg(lookahead);
@@ -329,20 +329,22 @@ void Driver::getAccelBrake(float *accel, float *brake)
     if(speedError > 400) speedError = 400;
     else if(speedError < -400) speedError = -400;
 
-	maxWheelSpin = 0;
+	wheelSpin = speedError >= 0.0 ? 0.0 : FLT_MAX;
 	for(int i = 0; i < 4; i++)
 	{
-		maxWheelSpin = MAX(car->_wheelSpinVel(i) * car->_wheelRadius(i), maxWheelSpin);
+		wheelSpin = speedError >= 0.0 ? 
+						MAX(car->_wheelSpinVel(i) * car->_wheelRadius(i), wheelSpin) :
+						MIN(car->_wheelSpinVel(i) * car->_wheelRadius(i), wheelSpin);
 	}
 
-	if(maxWheelSpin > getSpeed() && getSpeed() > 3)
+	if(wheelSpin > getSpeed() && getSpeed() > 3)
 	{
-		wheelSlip = (maxWheelSpin - getSpeed()) / maxWheelSpin;
+		wheelSlip = (wheelSpin - getSpeed()) / wheelSpin;
 		//std::cout << "SLIP_TCL: " << wheelSlip << "\n";
 	}
-	else if(maxWheelSpin < getSpeed() && getSpeed() > 3)
+	else if(wheelSpin < getSpeed() && getSpeed() > 3)
 	{
-		wheelSlip = -(getSpeed() - maxWheelSpin) / getSpeed();
+		wheelSlip = -(getSpeed() - wheelSpin) / getSpeed();
 		//std::cout << "SLIP_ABS: " << wheelSlip << "\n";
 	}
 	else
