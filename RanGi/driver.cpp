@@ -875,7 +875,7 @@ float Driver::filterBPit(float brake)
 		if (dl < PIT_BRAKE_AHEAD) {
 			float mu = car->_trkPos.seg->surface->kFriction*TIREMU*PIT_MU;
 			if (brakedist(0.0f, mu) > dl) {
-				return 1.0f;
+				return 0.5f;
 			}
 		}
 	}
@@ -889,7 +889,7 @@ float Driver::filterBPit(float brake)
 				// Brake to pit speed limit.
 				float dist = pit->getNPitStart() - s;
 				if (brakedist(pit->getSpeedlimit(), mu) > dist) {
-					return 1.0f;
+					return 0.5f;
 				}
 			} else {
 				// Hold speed limit.
@@ -1012,7 +1012,7 @@ float Driver::filterBColl(float brake)
 	for (i = 0; i < opponents->getNOpponents(); i++) {
 		if (opponent[i].getState() & OPP_COLL) {
 			if (brakedist(opponent[i].getSpeed(), mu) > opponent[i].getDistance()) {
-				return 1.0f;
+				return 0.5f;
 			}
 		}
 	}
