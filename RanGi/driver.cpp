@@ -238,7 +238,6 @@ void Driver::computeStraigth()
 				done++;
 			}
 			if(seg->type == TR_STR) straightInfo.length += seg->length;
-			straightInfo.cross = prevTurn == nextTurn ? 0 : 1;
 			seg = seg->next;
 		}
 		straightInfo.lap = car->_laps;
@@ -251,16 +250,6 @@ void Driver::computeStraigth()
 			straightInfo.segNum = track->nseg - straightInfo.endSegId + straightInfo.startSegId;
 		}
 		
-	}
-	if(car->_trkPos.seg->id >= straightInfo.startSegId)
-	{
-		if(car->_trkPos.seg->id != straightInfo.actualSegId)
-		{
-			straightInfo.completed += car->_trkPos.seg->length;
-			straightInfo.actualSegId = car->_trkPos.seg->id;
-		}
-		straightInfo.done = MIN(1.0f, straightInfo.completed / (straightInfo.length - offset));
-		//std::cout << "LENGTH: " << straightInfo.length << "\tCOMPL: " << straightInfo.completed << "\n";
 	}
 }
 
@@ -408,9 +397,7 @@ float Driver::getOffset(float lookahead)
 	tTrackSeg *nextTurnSeg = car->_trkPos.seg;
 	float posMaxOffset = MAX_ABS_OFFSET;
 	float negMaxOffset = -MAX_ABS_OFFSET;
-	float distToTurn = getDistToSegEnd();
 	float currentSpeed = getSpeed() * 3.6f;
-	float increment = 0.15f + currentSpeed / 3000.0f;
 	
 	computeStraigth();
 	segptr = getLookaheadSeg(lookahead);
@@ -422,7 +409,6 @@ float Driver::getOffset(float lookahead)
 			while (aux->id != straightInfo.startSegId)
 			{
 				aux = aux->next;
-				distToTurn += aux->length;
 			}
 			nextTurnSeg = aux->prev;
 		} 
@@ -431,10 +417,8 @@ float Driver::getOffset(float lookahead)
 			while (aux->id != straightInfo.endSegId)
 			{
 				aux = aux->next;
-				distToTurn += aux->length;
 			}
 			nextTurnSeg = aux->next;
-			increment *= straightInfo.done;
 		} 
 		else nextTurnSeg = segptr;
 	}
