@@ -210,7 +210,7 @@ void Driver::computeRadius(float *radius)
 
 }
 
-void Driver::computeStraigth()
+void Driver::computestraight()
 {
 	float offset = 30.0f;		// [ m ] -> Amount substracted from straight length
 
@@ -399,7 +399,7 @@ float Driver::getOffset(float lookahead)
 	float negMaxOffset = -MAX_ABS_OFFSET;
 	float currentSpeed = getSpeed() * 3.6f;
 	
-	computeStraigth();
+	computestraight();
 	segptr = getLookaheadSeg(lookahead);
 
 	{
@@ -749,6 +749,11 @@ void Driver::update(tSituation *s)
 	if(!pit->getPitstop() && (car->_fuel + 1.0f < lastFuelChecked || car->_dammage > lastDamageChecked))
 	{
 		pit->setPitstop(strategy->needPitstop(car, s, fc));
+		lastFuelChecked = car->_fuel;
+		lastDamageChecked = car->_dammage;
+	}
+	if(car->_fuel > lastFuelChecked || car->_dammage < lastDamageChecked)
+	{
 		lastFuelChecked = car->_fuel;
 		lastDamageChecked = car->_dammage;
 	}
