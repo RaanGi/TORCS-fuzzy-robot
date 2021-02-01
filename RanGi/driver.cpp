@@ -210,7 +210,7 @@ void Driver::computeRadius(float *radius)
 
 }
 
-void Driver::computestraight()
+void Driver::computeStraight()
 {
 	float offset = 30.0f;		// [ m ] -> Amount substracted from straight length
 
@@ -399,7 +399,7 @@ float Driver::getOffset(float lookahead)
 	float negMaxOffset = -MAX_ABS_OFFSET;
 	float currentSpeed = getSpeed() * 3.6f;
 	
-	computestraight();
+	computeStraight();
 	segptr = getLookaheadSeg(lookahead);
 
 	{

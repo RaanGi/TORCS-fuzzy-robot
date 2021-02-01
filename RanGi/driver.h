@@ -101,7 +101,7 @@ class Driver
 		void initTireMu();
 
         void computeRadius(float *radius);
-		void computeStraigth();
+		void computeStraight();
 		int isAlone();
 		tTrackSeg* getLookaheadSeg(float lookahead);
 
